@@ -323,7 +323,11 @@ async function installAll(onProgress) {
       return { ok: false, reason: 'ollama-missing' };
     }
 
-    await ensureModels(onProgress);
+    if (process.env.SENNA_SKIP_MODELS === '1') {
+      onProgress({ ...step('Modelos omitidos (test)', 100), ...log('SENNA_SKIP_MODELS=1 - modelos omitidos', '') });
+    } else {
+      await ensureModels(onProgress);
+    }
 
     onProgress({ ...step('Instalacion completa', 100), ...log('*** Senna listo para usar ***', 'ok') });
     return { ok: true };

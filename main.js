@@ -259,6 +259,20 @@ function checkForUpdatesManually() {
   });
 }
 
+// senna-devtools-handler
+const { globalShortcut } = require('electron');
+app.whenReady().then(() => {
+  // F12 y Ctrl+Shift+I abren DevTools en la ventana activa
+  globalShortcut.register('F12', () => {
+    const w = BrowserWindow.getFocusedWindow() || mainWindow;
+    if (w) w.webContents.toggleDevTools();
+  });
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    const w = BrowserWindow.getFocusedWindow() || mainWindow;
+    if (w) w.webContents.toggleDevTools();
+  });
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -268,7 +282,7 @@ function createWindow() {
     title: 'Jarvis — Asistente',
     backgroundColor: '#0a0908',
     icon: path.join(__dirname, 'assets', 'jarvis.ico'),
-    autoHideMenuBar: true,
+    autoHideMenuBar: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,

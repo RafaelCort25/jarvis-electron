@@ -1,3 +1,36 @@
-﻿node_modules/
+﻿# Dependencias
+node_modules/
+
+# Build (los .exe van a Releases, no al repo)
 dist/
+win-unpacked/
+
+# Backups y temporales
+*.bak
+*.before-updater.bak
+_patch*.py
+_fix*.py
+_mk*.py
+
+# Logs
 *.log
+npm-debug.log*
+
+# Electron builder
+builder-debug.yml
+builder-effective-config.yaml
+
+# Env
+.env
+.env.*
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+
+# Codigo temporal de IA
+codigo_frontend.txt

@@ -1,31 +1,49 @@
 {
-  "name": "jarvis",
-  "version": "1.0.0",
-  "description": "Jarvis - Asistente personal",
+  "name": "senna",
+  "version": "1.1.0",
+  "description": "Senna - Asistente personal con IA local",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win portable"
+    "build": "electron-builder --win nsis",
+    "release": "electron-builder --win nsis --publish always"
   },
-  "author": "Alessandro",
+  "author": "Rafael Cortijo",
   "license": "MIT",
   "devDependencies": {
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "build": {
-    "appId": "com.alessandro.jarvis",
-    "productName": "Jarvis",
+    "appId": "com.rafaelcortijo.senna",
+    "productName": "Senna",
     "directories": {
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RafaelCort25",
+        "repo": "jarvis-electron",
+        "releaseType": "release"
+      }
+    ],
     "win": {
-      "target": "portable",
+      "target": "nsis",
       "icon": "assets/jarvis.ico",
       "signAndEditExecutable": false
     },
-    "portable": {
-      "artifactName": "Jarvis.exe"
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Senna",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": false
     },
     "files": [
       "main.js",
@@ -35,3 +53,4 @@
     "forceCodeSigning": false
   }
 }
+

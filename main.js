@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, session, dialog, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
 const net = require('net');
@@ -9,8 +10,44 @@ let pythonProc = null;
 let isQuitting = false;
 
 const PYTHON_PORT = 8000;
-const PROJECT_ROOT = 'C:/JARVIS';
+// ─── DETECCION AUTOMATICA DEL BACKEND ─────────────────────────────────
+// Orden de busqueda (primero el que gana):
+//   1. JARVIS_ROOT env var (override manual)
+//   2. ../JARVIS  (carpeta hermana del .exe portable)
+//   3. JARVIS     (carpeta junto al .exe)
+//   4. C:/JARVIS  (dev / instalacion original)
+//   5. ~/JARVIS   (perfil usuario)
+function findProjectRoot() {
+  const fs = require('fs');
+  const exeDir = path.dirname(process.execPath);
+  const candidates = [
+    process.env.JARVIS_ROOT,
+    path.join(exeDir, '..', 'JARVIS'),    // portable: ../JARVIS desde el .exe
+    path.join(exeDir, 'JARVIS'),           // junto al .exe
+    'C:/JARVIS',                            // dev
+    path.join(process.env.USERPROFILE || '', 'JARVIS'),
+    path.join(__dirname, '..', 'JARVIS'),
+  ].filter(Boolean);
+
+  for (const c of candidates) {
+    try {
+      const venvPy = path.join(c, 'venv', 'Scripts', 'python.exe');
+      const mainPy = path.join(c, 'main.py');
+      const apiPy = path.join(c, 'api_server.py');
+      if (fs.existsSync(venvPy) && fs.existsSync(mainPy) && fs.existsSync(apiPy)) {
+        console.log('[Electron] Backend encontrado en:', c);
+        return c;
+      }
+    } catch (e) {}
+  }
+  console.error('[Electron] Backend NO encontrado. Probados:', candidates);
+  return candidates[3]; // fallback a C:/JARVIS
+}
+
+const PROJECT_ROOT = findProjectRoot();
 const PYTHON_EXE = path.join(PROJECT_ROOT, 'venv', 'Scripts', 'python.exe');
+console.log('[Electron] PROJECT_ROOT =', PROJECT_ROOT);
+console.log('[Electron] PYTHON_EXE =', PYTHON_EXE);
 
 
 function isPortOpen(port) {
@@ -100,6 +137,110 @@ function stopPython() {
 }
 
 
+// ─── AUTO-UPDATE ──────────────────────────────────────────────────────
+// Configura electron-updater para actualizaciones desde GitHub Releases.
+// Los eventos se envian a la ventana para que la UI muestre el estado.
+
+function setupAutoUpdater() {
+  // Solo en produccion (app empaquetada)
+  if (!app.isPackaged) {
+    console.log('[Updater] Modo dev: auto-update desactivado');
+    return;
+  }
+
+  autoUpdater.logger = console;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[Updater] Buscando actualizaciones...');
+    sendUpdaterStatus('checking');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] Actualizacion disponible:', info.version);
+    sendUpdaterStatus('available', info.version);
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    console.log('[Updater] Sin actualizaciones. Version actual:', info.version);
+    sendUpdaterStatus('not-available', info.version);
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[Updater] Error:', err);
+    sendUpdaterStatus('error', err.message);
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log('[Updater] Descargando:', progress.percent.toFixed(1), '%');
+    sendUpdaterStatus('downloading', progress.percent.toFixed(1));
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Updater] Actualizacion descargada:', info.version);
+    sendUpdaterStatus('downloaded', info.version);
+    if (tray) {
+      tray.displayBalloon({
+        title: 'Senna - Actualizacion lista',
+        content: 'La version ' + info.version + ' se instalara al reiniciar.',
+      });
+    }
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Actualizacion lista',
+      message: 'Senna ' + info.version + ' esta lista para instalarse.',
+      detail: 'Se instalara la proxima vez que reinicies. ¿Reiniciar ahora?',
+      buttons: ['Reiniciar ahora', 'Mas tarde'],
+      defaultId: 0,
+      cancelId: 1,
+    }).then((result) => {
+      if (result.response === 0) {
+        isQuitting = true;
+        stopPython();
+        autoUpdater.quitAndInstall();
+      }
+    });
+  });
+
+  // Comprobar al arrancar (con delay de 10s para no bloquear)
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch(err => console.error('[Updater] Check fallo:', err));
+  }, 10000);
+
+  // Comprobar cada 6 horas
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch(err => console.error('[Updater] Check fallo:', err));
+  }, 6 * 60 * 60 * 1000);
+}
+
+
+function sendUpdaterStatus(status, data = null) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater-status', { status, data });
+  }
+}
+
+
+function checkForUpdatesManually() {
+  if (!app.isPackaged) {
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Auto-update',
+      message: 'Auto-update solo funciona en la version empaquetada.',
+      detail: 'Estas ejecutando Senna en modo desarrollo.',
+    });
+    return;
+  }
+  autoUpdater.checkForUpdates().catch(err => {
+    dialog.showMessageBox({
+      type: 'error',
+      title: 'Error de actualizacion',
+      message: 'No se pudo comprobar: ' + err.message,
+    });
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -134,8 +275,10 @@ function createTray() {
   tray = new Tray(icon);
 
   const menu = Menu.buildFromTemplate([
-    { label: 'Mostrar Jarvis', click: () => mainWindow.show() },
+    { label: 'Mostrar Senna', click: () => mainWindow.show() },
     { label: 'Ocultar', click: () => mainWindow.hide() },
+    { type: 'separator' },
+    { label: 'Buscar actualizaciones', click: () => checkForUpdatesManually() },
     { type: 'separator' },
     {
       label: 'Salir',
@@ -154,6 +297,18 @@ function createTray() {
     else mainWindow.show();
   });
 }
+
+
+// ─── IPC HANDLERS ─────────────────────────────────────────────────────
+// Permiten a la UI (frontend) interactuar con el updater y la app.
+
+ipcMain.on('check-for-updates', () => {
+  checkForUpdatesManually();
+});
+
+ipcMain.handle('get-version', () => {
+  return app.getVersion();
+});
 
 
 app.whenReady().then(async () => {
@@ -175,6 +330,7 @@ app.whenReady().then(async () => {
   await startPython();
   createWindow();
   createTray();
+  setupAutoUpdater();
 });
 
 

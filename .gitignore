@@ -34,3 +34,7 @@ Desktop.ini
 
 # Codigo temporal de IA
 codigo_frontend.txt
+
+*.bak
+*.pre-*.bak
+

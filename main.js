@@ -20,8 +20,11 @@ const PYTHON_PORT = 8000;
 function findProjectRoot() {
   const fs = require('fs');
   const exeDir = path.dirname(process.execPath);
+  const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
+  const bootstrapBackend = path.join(appData, 'senna', 'backend');
   const candidates = [
-    process.env.JARVIS_ROOT,
+    process.env.JARVIS_ROOT,               // override manual
+    bootstrapBackend,                      // instalacion bootstrap
     path.join(exeDir, '..', 'JARVIS'),    // portable: ../JARVIS desde el .exe
     path.join(exeDir, 'JARVIS'),           // junto al .exe
     'C:/JARVIS',                            // dev
@@ -31,23 +34,40 @@ function findProjectRoot() {
 
   for (const c of candidates) {
     try {
-      const venvPy = path.join(c, 'venv', 'Scripts', 'python.exe');
       const mainPy = path.join(c, 'main.py');
       const apiPy = path.join(c, 'api_server.py');
-      if (fs.existsSync(venvPy) && fs.existsSync(mainPy) && fs.existsSync(apiPy)) {
+      if (fs.existsSync(mainPy) && fs.existsSync(apiPy)) {
         console.log('[Electron] Backend encontrado en:', c);
         return c;
       }
     } catch (e) {}
   }
-  console.error('[Electron] Backend NO encontrado. Probados:', candidates);
-  return candidates[3]; // fallback a C:/JARVIS
+  console.log('[Electron] Backend NO encontrado (buscado en ' + candidates.length + ' ubicaciones)');
+  return null;  // indica que hay que hacer bootstrap
 }
 
-const PROJECT_ROOT = findProjectRoot();
-const PYTHON_EXE = path.join(PROJECT_ROOT, 'venv', 'Scripts', 'python.exe');
+function findPythonExe(root) {
+  if (!root) return null;
+  const fs = require('fs');
+  // Caso 1: venv de desarrollo
+  const venvPy = path.join(root, 'venv', 'Scripts', 'python.exe');
+  if (fs.existsSync(venvPy)) return venvPy;
+  // Caso 2: instalacion bootstrap (python vive al lado de backend/)
+  const parentPy = path.join(path.dirname(root), 'python', 'python.exe');
+  if (fs.existsSync(parentPy)) return parentPy;
+  return null;
+}
+
+// Hook de desarrollo: fuerza el modo setup (sin tocar C:\JARVIS)
+const FORCE_SETUP = process.env.SENNA_FORCE_SETUP === '1';
+const PROJECT_ROOT = FORCE_SETUP ? null : findProjectRoot();
+const PYTHON_EXE = findPythonExe(PROJECT_ROOT);
+if (FORCE_SETUP) console.log('[Electron] SENNA_FORCE_SETUP=1 — modo setup forzado');
 console.log('[Electron] PROJECT_ROOT =', PROJECT_ROOT);
 console.log('[Electron] PYTHON_EXE =', PYTHON_EXE);
+
+// Require del bootstrap (para la primera ejecucion)
+const bootstrap = require('./bootstrap');
 
 
 function isPortOpen(port) {
@@ -273,6 +293,62 @@ app.whenReady().then(() => {
   });
 });
 
+let setupWindow = null;
+
+function createSetupWindow() {
+  setupWindow = new BrowserWindow({
+    width: 720,
+    height: 620,
+    resizable: false,
+    frame: true,
+    autoHideMenuBar: true,
+    backgroundColor: '#0a0908',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload-setup.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  setupWindow.loadFile('setup.html');
+  setupWindow.on('closed', () => { setupWindow = null; });
+}
+
+// ─── IPC handlers para la ventana de setup ───
+function sendSetupProgress(data) {
+  if (setupWindow && !setupWindow.isDestroyed()) {
+    setupWindow.webContents.send('setup-progress', data);
+  }
+}
+
+ipcMain.on('setup-quit', () => {
+  app.quit();
+});
+
+ipcMain.on('setup-retry', async () => {
+  const result = await bootstrap.installAll(sendSetupProgress);
+  if (result.ok) {
+    sendSetupProgress({ log: 'Iniciando Senna...', type: 'ok' });
+    setTimeout(() => {
+      if (setupWindow && !setupWindow.isDestroyed()) {
+        setupWindow.close();
+      }
+      // Recargar PROJECT_ROOT (ahora el backend ya existe)
+      app.relaunch();
+      app.exit(0);
+    }, 1500);
+  }
+});
+
+ipcMain.on('setup-launch', () => {
+  // Cerrar setup y relanzar la app limpia
+  if (setupWindow && !setupWindow.isDestroyed()) {
+    setupWindow.close();
+  }
+  app.relaunch();
+  app.exit(0);
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -358,6 +434,21 @@ app.whenReady().then(async () => {
     if (permission === 'media' || permission === 'audioCapture') return true;
     return false;
   });
+
+  // ─── Decidir flujo: setup (primera vez) o app normal ───
+  if (!PROJECT_ROOT || !PYTHON_EXE) {
+    console.log('[Electron] Primera ejecucion detectada. Abriendo setup...');
+    createSetupWindow();
+    // Arrancar el bootstrap en cuanto la ventana este lista
+    setupWindow.webContents.once('did-finish-load', () => {
+      bootstrap.installAll(sendSetupProgress).then((result) => {
+        if (result.ok) {
+          sendSetupProgress({ log: 'Todo listo. Pulsa "Iniciar Senna"', type: 'ok', done: true });
+        }
+      });
+    });
+    return;  // no arrancar python todavia
+  }
 
   await startPython();
   createWindow();

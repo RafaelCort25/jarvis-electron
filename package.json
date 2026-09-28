@@ -48,6 +48,9 @@
     "files": [
       "main.js",
       "preload.js",
+      "preload-setup.js",
+      "bootstrap.js",
+      "setup.html",
       "assets/**/*"
     ],
     "forceCodeSigning": false

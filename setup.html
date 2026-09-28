@@ -1,0 +1,202 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Instalando Senna</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0908;
+      color: #e8e0d0;
+      overflow: hidden;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      -webkit-app-region: drag;
+    }
+    .container {
+      width: 100%;
+      max-width: 640px;
+      padding: 48px;
+      text-align: center;
+    }
+    .logo {
+      font-family: Georgia, serif;
+      font-size: 3rem;
+      color: #e8c992;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      font-weight: 400;
+    }
+    .logo em {
+      font-style: italic;
+      color: #c9a668;
+      font-size: 0.7em;
+    }
+    .subtitle {
+      font-size: 0.85rem;
+      color: #8a8278;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 48px;
+    }
+    .step {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+    .step-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: #c9a668;
+      margin-bottom: 8px;
+      font-family: 'Consolas', monospace;
+      letter-spacing: 0.05em;
+    }
+    .step-status {
+      color: #8a8278;
+    }
+    .progress-bar {
+      height: 6px;
+      background: rgba(201,166,104,0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 4px;
+    }
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #c9a668, #e8c992);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 12px rgba(201,166,104,0.5);
+    }
+    .log {
+      margin-top: 32px;
+      max-height: 120px;
+      overflow-y: auto;
+      text-align: left;
+      font-family: 'Consolas', monospace;
+      font-size: 0.72rem;
+      color: #6a6258;
+      line-height: 1.6;
+      padding: 12px 16px;
+      background: rgba(20,17,13,0.5);
+      border: 1px solid rgba(201,166,104,0.1);
+      border-radius: 8px;
+    }
+    .log::-webkit-scrollbar { width: 4px; }
+    .log::-webkit-scrollbar-thumb { background: rgba(201,166,104,0.3); border-radius: 2px; }
+    .log-line { margin-bottom: 2px; }
+    .log-line.error { color: #e08080; }
+    .log-line.ok { color: #90c090; }
+    .final-actions {
+      margin-top: 32px;
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      -webkit-app-region: no-drag;
+    }
+    .btn {
+      padding: 12px 32px;
+      border: 1px solid rgba(201,166,104,0.4);
+      background: rgba(201,166,104,0.1);
+      color: #e8c992;
+      font-size: 0.9rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 6px;
+      font-family: 'Consolas', monospace;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: rgba(201,166,104,0.2); border-color: #c9a668; }
+    .btn.primary { background: rgba(201,166,104,0.25); }
+    .orb {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 30% 30%, #f0dba8, #c9a668, #8a6f3a);
+      box-shadow: 0 0 60px rgba(201,166,104,0.5);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.05); opacity: 1; }
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="orb"></div>
+    <div class="logo">SENNA <em>asistente</em></div>
+    <div class="subtitle" id="mainSubtitle">Preparando instalación</div>
+
+    <div class="step">
+      <div class="step-label">
+        <span id="stepName">Iniciando...</span>
+        <span class="step-status" id="stepStatus">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <div class="log" id="log">
+      <div class="log-line">Esperando inicio...</div>
+    </div>
+
+    <div class="final-actions hidden" id="finalActions">
+      <button class="btn" id="btnExit">Salir</button>
+      <button class="btn primary" id="btnLaunch">Iniciar Senna</button>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const api = window.setupAPI || {};
+
+    function log(msg, type = '') {
+      const line = document.createElement('div');
+      line.className = 'log-line' + (type ? ' ' + type : '');
+      line.textContent = '> ' + msg;
+      $('log').appendChild(line);
+      $('log').scrollTop = $('log').scrollHeight;
+    }
+
+    function setStep(name, percent) {
+      $('stepName').textContent = name;
+      $('stepStatus').textContent = percent + '%';
+      $('progressFill').style.width = percent + '%';
+    }
+
+    function showFinal() {
+      $('finalActions').classList.remove('hidden');
+      $('mainSubtitle').textContent = 'Instalación completa';
+    }
+
+    function showError(msg) {
+      log(msg, 'error');
+      $('mainSubtitle').textContent = 'Error en la instalación';
+      $('mainSubtitle').style.color = '#e08080';
+      $('finalActions').classList.remove('hidden');
+      $('btnLaunch').textContent = 'Reintentar';
+    }
+
+    if (api.onProgress) {
+      api.onProgress((data) => {
+        if (data.step) setStep(data.step, data.percent || 0);
+        if (data.log) log(data.log, data.type || '');
+      });
+    }
+
+    $('btnExit').addEventListener('click', () => api.quit && api.quit());
+    $('btnLaunch').addEventListener('click', () => api.launch && api.launch());
+
+    log('Ventana de instalación lista');
+  </script>
+</body>
+</html>

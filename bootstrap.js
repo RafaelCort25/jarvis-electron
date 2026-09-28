@@ -20,9 +20,14 @@ const GET_PIP_URL = 'https://bootstrap.pypa.io/get-pip.py';
 
 // Modelos Ollama que se descargan por defecto (los mas importantes)
 const OLLAMA_MODELS = [
-  'llama3.2:3b',
-  'nomic-embed-text',
+  { id: 'llama3.2:3b', size: '2 GB', desc: 'Chat rapido (default)' },
+  { id: 'qwen2.5-coder:7b', size: '4.7 GB', desc: 'Codigo y documentos' },
+  { id: 'nomic-embed-text', size: '274 MB', desc: 'Embeddings para RAG' },
+  { id: 'qwen2.5vl:7b', size: '6 GB', desc: 'Vision (el mejor)' },
 ];
+
+// Tamano total descargable (para mostrar al usuario)
+const MODELOS_TOTAL_MB = 13000;
 
 // ─── Utilidades ──────────────────────────────────────────────
 
@@ -39,7 +44,22 @@ function step(name, percent) {
   return { step: name, percent };
 }
 
-function downloadFile(url, dest, onProgress) {
+async function downloadFile(url, dest, onProgress, retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await downloadFileOnce(url, dest, onProgress);
+    } catch (e) {
+      if (attempt < retries) {
+        console.log('[bootstrap] Reintentando descarga (' + attempt + '/' + retries + '):', e.message);
+        await new Promise(r => setTimeout(r, 2000 * attempt));
+      } else {
+        throw e;
+      }
+    }
+  }
+}
+
+function downloadFileOnce(url, dest, onProgress) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest);
     https.get(url, (res) => {
@@ -212,13 +232,29 @@ async function ensureOllama(onProgress) {
   onProgress({ ...step('Verificando Ollama', 0), ...log('Verificando Ollama...') });
   try {
     execSync('ollama --version', { windowsHide: true, stdio: 'ignore' });
-    onProgress({ ...step('Ollama OK', 100), ...log('Ollama detectado', 'ok') });
+    onProgress({ ...step('Ollama OK', 100), ...log('Ollama detectado correctamente', 'ok') });
     return true;
   } catch (e) {
     onProgress({
-      ...step('Ollama no instalado', 100),
-      ...log('Ollama no esta instalado. Descargalo de https://ollama.com/download/windows y vuelve a intentarlo.', 'error'),
+      ...step('Instala Ollama', 0),
+      ...log('Ollama no esta instalado en tu PC.', 'error'),
       type: 'need_ollama',
+    });
+    onProgress({
+      ...step('Instala Ollama', 0),
+      ...log('1. Se abrira la pagina de descarga', ''),
+    });
+    onProgress({
+      ...step('Instala Ollama', 0),
+      ...log('2. Descarga OllamaSetup.exe (~500 MB)', ''),
+    });
+    onProgress({
+      ...step('Instala Ollama', 0),
+      ...log('3. Ejecutalo (instalacion automatica, 1 min)', ''),
+    });
+    onProgress({
+      ...step('Instala Ollama', 0),
+      ...log('4. Vuelve aqui y pulsa Reintentar', ''),
     });
     return false;
   }
@@ -226,9 +262,10 @@ async function ensureOllama(onProgress) {
 
 async function ensureModels(onProgress) {
   for (let i = 0; i < OLLAMA_MODELS.length; i++) {
-    const model = OLLAMA_MODELS[i];
+    const m = OLLAMA_MODELS[i];
+    const model = m.id;
     const basePercent = Math.round((i / OLLAMA_MODELS.length) * 100);
-    onProgress({ ...step('Descargando ' + model, basePercent), ...log('Descargando modelo ' + model + '...') });
+    onProgress({ ...step('Descargando ' + model + ' (' + m.size + ')', basePercent), ...log('Descargando modelo ' + model + ' - ' + m.desc) });
 
     await new Promise((resolve, reject) => {
       const proc = spawn('ollama', ['pull', model], { windowsHide: true });

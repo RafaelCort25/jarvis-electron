@@ -101,6 +101,24 @@ async function startPython() {
   }
 
   // 2. Bot de Telegram (en segundo plano)
+  // IMPORTANTE: matar cualquier instancia previa para evitar conflictos
+  // de getUpdates (telegram.error.Conflict).
+  console.log('[Electron] Limpiando bots de Telegram huerfanos...');
+  try {
+    const { execSync } = require('child_process');
+    // Busca procesos python cuyo command line contenga "telegram_bot"
+    const psCmd = 'Get-CimInstance Win32_Process -Filter "Name=\'python.exe\'" | ' +
+                  'Where-Object { $_.CommandLine -like \'*telegram_bot*\' } | ' +
+                  'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }';
+    execSync('powershell -NoProfile -Command "' + psCmd.replace(/"/g, '\"') + '"', {
+      windowsHide: true,
+      timeout: 5000,
+    });
+    console.log('[Electron] Limpieza de Telegram OK');
+  } catch(e) {
+    console.log('[Electron] Limpieza Telegram (no habia nada o fallo):', e.message);
+  }
+
   console.log('[Electron] Iniciando bot de Telegram...');
   telegramProc = spawn(PYTHON_EXE, [
     '-m', 'integrations.telegram_bot'

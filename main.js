@@ -22,12 +22,17 @@ function findProjectRoot() {
   const exeDir = path.dirname(process.execPath);
   const appData = process.env.APPDATA || path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming');
   const bootstrapBackend = path.join(appData, 'senna', 'backend');
+  // Detectar entorno de desarrollo: si C:/JARVIS tiene venv/, es dev
+  const devPath = 'C:/JARVIS';
+  const isDevMode = fs.existsSync(path.join(devPath, 'venv', 'Scripts', 'python.exe'));
+
   const candidates = [
-    process.env.JARVIS_ROOT,               // override manual
-    bootstrapBackend,                      // instalacion bootstrap
-    path.join(exeDir, '..', 'JARVIS'),    // portable: ../JARVIS desde el .exe
-    path.join(exeDir, 'JARVIS'),           // junto al .exe
-    'C:/JARVIS',                            // dev
+    process.env.JARVIS_ROOT,               // 1. override manual
+    isDevMode ? devPath : null,            // 2. dev mode (C:/JARVIS con venv) ← PRIORIDAD
+    bootstrapBackend,                      // 3. instalacion bootstrap
+    path.join(exeDir, '..', 'JARVIS'),    // 4. portable: ../JARVIS desde el .exe
+    path.join(exeDir, 'JARVIS'),           // 5. junto al .exe
+    devPath,                                // 6. C:/JARVIS sin venv (fallback)
     path.join(process.env.USERPROFILE || '', 'JARVIS'),
     path.join(__dirname, '..', 'JARVIS'),
   ].filter(Boolean);
